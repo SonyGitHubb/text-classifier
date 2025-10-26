@@ -11,11 +11,9 @@ from transformers import (
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, classification_report
 
-# Zařízení a batch size
 device = "cuda" if torch.cuda.is_available() else "cpu"
 batch_size = 16 if torch.cuda.is_available() else 4
 
-# Načtení CSV souborů z datasetu
 files = glob.glob("data/*.csv")
 frames = []
 for f in files:
@@ -26,16 +24,13 @@ for f in files:
 
 df = pd.concat(frames, ignore_index=True)
 
-# Sloučení sloupců title + perex do jednoho textu
 df["text"] = df["title"].astype(str) + " " + df["perex"].astype(str)
 df["label_id"] = df["label"].astype("category").cat.codes
 labels = list(df["label"].astype("category").cat.categories)
 
-# Rozdělení datasetu
 train_df, test_df = train_test_split(df, test_size=0.2, stratify=df["label_id"], random_state=42)
 train_df, val_df = train_test_split(train_df, test_size=0.1, stratify=train_df["label_id"], random_state=42)
 
-# Tokenizace
 tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
 
 def tokenize(batch):
@@ -53,7 +48,6 @@ train_ds = to_dataset(train_df)
 val_ds = to_dataset(val_df)
 test_ds = to_dataset(test_df)
 
-# Model 
 model = AutoModelForSequenceClassification.from_pretrained(
     "xlm-roberta-base",
     num_labels=len(labels),
@@ -61,14 +55,13 @@ model = AutoModelForSequenceClassification.from_pretrained(
     label2id={label: i for i, label in enumerate(labels)}
 ).to(device)
 
-# Metody vyhodnocení 
+
 def compute_metrics(pred):
     preds = pred.predictions.argmax(-1)
     acc = accuracy_score(pred.label_ids, preds)
     prec, rec, f1, _ = precision_recall_fscore_support(pred.label_ids, preds, average="weighted", zero_division=0)
     return {"accuracy": acc, "precision": prec, "recall": rec, "f1": f1}
 
-# Trénování 
 trainer = Trainer(
     model=model,
     args=TrainingArguments(
@@ -91,13 +84,13 @@ trainer = Trainer(
 
 trainer.train()
 
-# Vyhodnocení
+
 metrics = trainer.evaluate(test_ds)
 print(f"Accuracy: {metrics['eval_accuracy']:.3f}  F1: {metrics['eval_f1']:.3f}")
 
 preds = trainer.predict(test_ds)
 print(classification_report(test_df["label_id"], preds.predictions.argmax(-1), target_names=labels, digits=3))
 
-# Uložení modelu 
+
 model.save_pretrained("./model")
 tokenizer.save_pretrained("./model")
